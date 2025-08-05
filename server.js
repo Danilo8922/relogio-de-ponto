@@ -4,6 +4,7 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const path = require('path');
 const PDFDocument = require('pdfkit');
+const { imprimirComprovante } = require('./impressora');
 
 const app = express();
 const PORT = 3000;
@@ -16,8 +17,8 @@ app.use(express.static(__dirname)); // serve os arquivos HTML e JS
 
 // Banco de dados
 const db = new sqlite3.Database('./db/banco.sqlite', (err) => {
-  if (err) return console.error(err.message);
-  console.log("📦 Banco de dados conectado com sucesso!");
+    if (err) return console.error(err.message);
+    console.log("📦 Banco de dados conectado com sucesso!");
 });
 
 // Criar tabela se não existir
@@ -36,34 +37,34 @@ db.run(`
 `);
 
 db.get(`SELECT * FROM usuarios WHERE login = 'admin'`, (err, row) => {
-  if (err) return console.error(err.message);
-  if (!row) {
-    db.run(`
+    if (err) return console.error(err.message);
+    if (!row) {
+        db.run(`
       INSERT INTO usuarios (nome, cpf, telefone, login, senha, horario_entrada, horario_saida, tipo)
       VALUES ('Administrador', '00000000000', '000000000', 'admin', 'admin123', '08:00', '18:00', 'adm')
     `, (err) => {
-      if (err) return console.error("Erro ao criar admin:", err.message);
-      console.log("👤 Usuário admin criado com sucesso!");
-    });
-  }
+            if (err) return console.error("Erro ao criar admin:", err.message);
+            console.log("👤 Usuário admin criado com sucesso!");
+        });
+    }
 });
 
 // Rota para cadastrar funcionário
 app.post('/api/cadastrar', (req, res) => {
-  const { nome, cpf, telefone, login, senha, horario_entrada, horario_saida } = req.body;
+    const { nome, cpf, telefone, login, senha, horario_entrada, horario_saida } = req.body;
 
-  const query = `
+    const query = `
     INSERT INTO usuarios (nome, cpf, telefone, login, senha, horario_entrada, horario_saida)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `;
 
-  db.run(query, [nome, cpf, telefone, login, senha, horario_entrada, horario_saida], function(err) {
-    if (err) {
-      console.error(err.message);
-      return res.status(500).json({ erro: 'Erro ao cadastrar funcionário' });
-    }
-    res.json({ sucesso: true, id: this.lastID });
-  });
+    db.run(query, [nome, cpf, telefone, login, senha, horario_entrada, horario_saida], function (err) {
+        if (err) {
+            console.error(err.message);
+            return res.status(500).json({ erro: 'Erro ao cadastrar funcionário' });
+        }
+        res.json({ sucesso: true, id: this.lastID });
+    });
 });
 
 // rota do registro de ponto 
@@ -82,125 +83,131 @@ db.run(`
 `);
 
 app.post("/api/registrar-ponto", (req, res) => {
-  const { usuario_id, data, hora_entrada, atraso } = req.body;
+    const { usuario_id, data, hora_entrada, atraso } = req.body;
 
-  const query = `
+    const query = `
     INSERT INTO registros_ponto (usuario_id, data, hora_entrada, atraso)
     VALUES (?, ?, ?, ?)
   `;
 
-  db.run(query, [usuario_id, data, hora_entrada, atraso], function(err) {
-    if (err) {
-      console.error("Erro ao registrar ponto:", err.message);
-      return res.status(500).json({ sucesso: false });
-    }
+    db.run(query, [usuario_id, data, hora_entrada, atraso], function (err) {
+        if (err) {
+            console.error("Erro ao registrar ponto:", err.message);
+            return res.status(500).json({ sucesso: false });
+        }
 
-    res.json({ sucesso: true });
-  });
+        db.get("SELECT nome FROM usuarios WHERE id = ?", [usuario_id], (err, row) => {
+            if (row) {
+                imprimirComprovante(row.nome, data, hora_entrada);
+            }
+        });
+
+        res.json({ sucesso: true });
+    });
 });
 
 app.put("/api/registrar-saida", (req, res) => {
-  const { usuario_id, data, hora_saida } = req.body;
+    const { usuario_id, data, hora_saida } = req.body;
 
-  const updateQuery = `
+    const updateQuery = `
     UPDATE registros_ponto
     SET hora_saida = ?
     WHERE usuario_id = ? AND data = ?
   `;
 
-  db.run(updateQuery, [hora_saida, usuario_id, data], function(err) {
-    if (err) {
-      console.error("Erro ao registrar saída:", err.message);
-      return res.status(500).json({ sucesso: false });
-    }
+    db.run(updateQuery, [hora_saida, usuario_id, data], function (err) {
+        if (err) {
+            console.error("Erro ao registrar saída:", err.message);
+            return res.status(500).json({ sucesso: false });
+        }
 
-    // Se não atualizou nenhum registro, insere um novo
-    if (this.changes === 0) {
-      const insertQuery = `
+        // Se não atualizou nenhum registro, insere um novo
+        if (this.changes === 0) {
+            const insertQuery = `
         INSERT INTO registros_ponto (usuario_id, data, hora_saida, atraso)
         VALUES (?, ?, ?, ?)
       `;
 
-      db.run(insertQuery, [usuario_id, data, hora_saida, "0"], function(insertErr) {
-        if (insertErr) {
-          console.error("Erro ao inserir saída:", insertErr.message);
-          return res.status(500).json({ sucesso: false });
-        }
+            db.run(insertQuery, [usuario_id, data, hora_saida, "0"], function (insertErr) {
+                if (insertErr) {
+                    console.error("Erro ao inserir saída:", insertErr.message);
+                    return res.status(500).json({ sucesso: false });
+                }
 
-        return res.json({ sucesso: true, inserido: true });
-      });
-    } else {
-      return res.json({ sucesso: true, atualizado: true });
-    }
-  });
+                return res.json({ sucesso: true, inserido: true });
+            });
+        } else {
+            return res.json({ sucesso: true, atualizado: true });
+        }
+    });
 });
 
 
 
 // Rota de login
 app.post("/api/login", (req, res) => {
-  const { login, senha } = req.body;
+    const { login, senha } = req.body;
 
-  db.get(`SELECT * FROM usuarios WHERE login = ? AND senha = ?`, [login, senha], (err, row) => {
-    if (err) {
-      console.error(err.message);
-      return res.status(500).json({ sucesso: false });
-    }
+    db.get(`SELECT * FROM usuarios WHERE login = ? AND senha = ?`, [login, senha], (err, row) => {
+        if (err) {
+            console.error(err.message);
+            return res.status(500).json({ sucesso: false });
+        }
 
-    if (row) {
-      res.json({ sucesso: true, tipo: row.tipo, nome: row.nome });
-    } else {
-      res.json({ sucesso: false });
-    }
-  });
+        if (row) {
+            res.json({ sucesso: true, tipo: row.tipo, nome: row.nome });
+        } else {
+            res.json({ sucesso: false });
+        }
+    });
 });
 
 app.get("/api/funcionario/:login", (req, res) => {
-  const login = req.params.login;
-  db.get("SELECT * FROM usuarios WHERE login = ?", [login], (err, row) => {
-    if (err) return res.status(500).json({ erro: true });
-    res.json(row);
-  });
+    const login = req.params.login;
+    db.get("SELECT * FROM usuarios WHERE login = ?", [login], (err, row) => {
+        if (err) return res.status(500).json({ erro: true });
+        res.json(row);
+    });
 });
 
 
 app.get("/api/funcionarios", (req, res) => {
-  db.all("SELECT * FROM usuarios WHERE tipo != 'adm'", (err, rows) => {
-    if (err) return res.status(500).json({ erro: true });
-    res.json(rows);
-  });
+    db.all("SELECT * FROM usuarios WHERE tipo != 'adm'", (err, rows) => {
+        if (err) return res.status(500).json({ erro: true });
+        res.json(rows);
+    });
 });
 
 app.delete("/api/funcionarios/:id", (req, res) => {
-  const id = req.params.id;
-  db.run("DELETE FROM usuarios WHERE id = ?", [id], function(err) {
-    if (err) return res.status(500).json({ erro: true });
-    res.json({ sucesso: true });
-  });
+    const id = req.params.id;
+    db.run("DELETE FROM usuarios WHERE id = ?", [id], function (err) {
+        if (err) return res.status(500).json({ erro: true });
+        res.json({ sucesso: true });
+    });
 });
 
 app.get("/api/funcionarios/:id", (req, res) => {
-  const id = req.params.id;
-  db.get("SELECT * FROM usuarios WHERE id = ?", [id], (err, row) => {
-    if (err) return res.status(500).json({ erro: true });
-    res.json(row);
-  });
+    const id = req.params.id;
+    db.get("SELECT * FROM usuarios WHERE id = ?", [id], (err, row) => {
+        if (err) return res.status(500).json({ erro: true });
+        res.json(row);
+    });
 });
 
 app.put("/api/funcionarios/:id", (req, res) => {
-  const id = req.params.id;
-  const { nome, cpf, telefone, login, senha, horario_entrada, horario_saida } = req.body;
+    const id = req.params.id;
+    const { nome, cpf, telefone, login, senha, horario_entrada, horario_saida } = req.body;
 
-  const query = `
+    const query = `
     UPDATE usuarios
     SET nome = ?, cpf = ?, telefone = ?, login = ?, senha = ?, horario_entrada = ?, horario_saida = ?
     WHERE id = ?
   `;
 
-  db.run(query, [nome, cpf, telefone, login, senha, horario_entrada, horario_saida, id], function(err) {
-    if (err) return res.status(500).json({ sucesso: false });
-    res.json({ sucesso: true });
-  });
+    db.run(query, [nome, cpf, telefone, login, senha, horario_entrada, horario_saida, id], function (err) {
+        if (err) return res.status(500).json({ sucesso: false });
+        res.json({ sucesso: true });
+    });
 })
 
 
@@ -211,90 +218,90 @@ app.put("/api/funcionarios/:id", (req, res) => {
 
 
 app.get("/relatorio/:id", (req, res) => {
-  const funcionarioId = req.params.id;
-  const db = new sqlite3.Database("./db/banco.sqlite");;
+    const funcionarioId = req.params.id;
+    const db = new sqlite3.Database("./db/banco.sqlite");;
 
-  db.get(
-    `SELECT nome FROM usuarios WHERE id = ?`,
-    [funcionarioId],
-    (err, funcionario) => {
-      if (err || !funcionario) {
-        return res.status(404).json({ erro: "Funcionário não encontrado" });
-      }
-
-      db.all(
-        `SELECT * FROM  registros_ponto WHERE usuario_id = ? ORDER BY data ASC`,
+    db.get(
+        `SELECT nome FROM usuarios WHERE id = ?`,
         [funcionarioId],
-        (err2, registros) => {
-          if (err2) {
-            return res.status(500).json({ erro: "Erro ao buscar registros" });
-          }
+        (err, funcionario) => {
+            if (err || !funcionario) {
+                return res.status(404).json({ erro: "Funcionário não encontrado" });
+            }
 
-          res.json({
-            nome: funcionario.nome,
-            registros: registros
-          });
+            db.all(
+                `SELECT * FROM  registros_ponto WHERE usuario_id = ? ORDER BY data ASC`,
+                [funcionarioId],
+                (err2, registros) => {
+                    if (err2) {
+                        return res.status(500).json({ erro: "Erro ao buscar registros" });
+                    }
+
+                    res.json({
+                        nome: funcionario.nome,
+                        registros: registros
+                    });
+                }
+            );
         }
-      );
-    }
-  );
+    );
 });
 
 app.get("/relatorio/:id/pdf", (req, res) => {
-  const funcionarioId = req.params.id;
-  const db = new sqlite3.Database("./db/banco.sqlite");
+    const funcionarioId = req.params.id;
+    const db = new sqlite3.Database("./db/banco.sqlite");
 
-  db.get(
-    `SELECT nome FROM usuarios WHERE id = ?`,
-    [funcionarioId],
-    (err, funcionario) => {
-      if (err || !funcionario) {
-        return res.status(404).send("Funcionário não encontrado");
-      }
-
-      db.all(
-        `SELECT * FROM registros_ponto WHERE usuario_id = ? ORDER BY data ASC`,
+    db.get(
+        `SELECT nome FROM usuarios WHERE id = ?`,
         [funcionarioId],
-        (err2, registros) => {
-          if (err2) {
-            return res.status(500).send("Erro ao buscar registros");
-          }
+        (err, funcionario) => {
+            if (err || !funcionario) {
+                return res.status(404).send("Funcionário não encontrado");
+            }
 
-          const doc = new PDFDocument({ margin: 50 });
+            db.all(
+                `SELECT * FROM registros_ponto WHERE usuario_id = ? ORDER BY data ASC`,
+                [funcionarioId],
+                (err2, registros) => {
+                    if (err2) {
+                        return res.status(500).send("Erro ao buscar registros");
+                    }
 
-          res.setHeader('Content-disposition', `attachment; filename=relatorio_funcionario_${funcionarioId}.pdf`);
-          res.setHeader('Content-type', 'application/pdf');
+                    const doc = new PDFDocument({ margin: 50 });
 
-          doc.pipe(res);
+                    res.setHeader('Content-disposition', `attachment; filename=relatorio_funcionario_${funcionarioId}.pdf`);
+                    res.setHeader('Content-type', 'application/pdf');
 
-          // Inserir logo
-          const imagePath = path.join(__dirname, 'img', 'logo.png');
+                    doc.pipe(res);
 
-          try {
-            doc.image(imagePath, 50, 50, { width: 80 }); // logo à esquerda
-          } catch (imgErr) {
-            console.error("Erro ao carregar imagem:", imgErr.message);
-          }
+                    // Inserir logo
+                    const imagePath = path.join(__dirname, 'img', 'logo.png');
 
-          // Título ao lado da imagem
-          doc.fontSize(20).text(`Relatório de Ponto`, 140, 65, { align: 'left' });
+                    try {
+                        doc.image(imagePath, 50, 50, { width: 80 }); // logo à esquerda
+                    } catch (imgErr) {
+                        console.error("Erro ao carregar imagem:", imgErr.message);
+                    }
 
-          doc.moveDown(2);
-          doc.fontSize(14).text(`Funcionário: ${funcionario.nome}`);
-          doc.moveDown();
+                    // Título ao lado da imagem
+                    doc.fontSize(20).text(`Relatório de Ponto`, 140, 65, { align: 'left' });
 
-          // Tabela
-          doc.fontSize(12);
-          doc.text(`Data  | Entrada | Saída   | Atraso`);
-          doc.text(`------------------------------------------`);
-          registros.forEach(reg => {
-          doc.text(`${reg.data} | ${reg.hora_entrada || '--:--'} | ${reg.hora_saida || '--:--'} | ${reg.atraso || '00:00'}`);
-          });
-          doc.end();
+                    doc.moveDown(2);
+                    doc.fontSize(14).text(`Funcionário: ${funcionario.nome}`);
+                    doc.moveDown();
+
+                    // Tabela
+                    doc.fontSize(12);
+                    doc.text(`Data  | Entrada | Saída   | Atraso`);
+                    doc.text(`------------------------------------------`);
+                    registros.forEach(reg => {
+                        doc.text(`${reg.data} | ${reg.hora_entrada || '--:--'} | ${reg.hora_saida || '--:--'} | ${reg.atraso || '00:00'}`);
+                    });
+                    doc.end();
+                }
+            );
         }
-      );
-    }
-  );
+    );
 });
 
 
@@ -304,6 +311,6 @@ app.get("/relatorio/:id/pdf", (req, res) => {
 
 
 app.listen(PORT, () => {
-  console.log(`🚀 Servidor rodando em http://localhost:${PORT}`);
+    console.log(`🚀 Servidor rodando em http://localhost:${PORT}`);
 });
 
