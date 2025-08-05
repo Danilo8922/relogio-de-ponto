@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Relatório do Funcionário</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+</head>
+<body class="container py-4">
+  <h2 id="nome-funcionario">Relatório de Ponto</h2>
+  
+  <table class="table table-striped mt-4" id="tabela-registros">
+    <thead>
+      <tr>
+        <th>Data</th>
+        <th>Entrada</th>
+        <th>Saída</th>
+        <th>Atraso</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- Registros inseridos via JS -->
+    </tbody>
+  </table>
+
+  <button id="btnBaixarPDF" class="btn btn-primary mt-3">📄 Baixar Relatório em PDF</button>
+
+  <script src="/relatorio.js"></script>
+</body>
+</html>
