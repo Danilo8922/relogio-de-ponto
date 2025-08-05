@@ -85,13 +85,53 @@ app.post("/api/registrar-ponto", (req, res) => {
   const { usuario_id, data, hora_entrada, atraso } = req.body;
 
   const query = `
-    INSERT INTO registros_ponto (usuario_id, data, hora_entrada, hora_saida, atraso)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO registros_ponto (usuario_id, data, hora_entrada, atraso)
+    VALUES (?, ?, ?, ?)
   `;
 
   db.run(query, [usuario_id, data, hora_entrada, atraso], function(err) {
-    if (err) return res.status(500).json({ sucesso: false });
+    if (err) {
+      console.error("Erro ao registrar ponto:", err.message);
+      return res.status(500).json({ sucesso: false });
+    }
+
     res.json({ sucesso: true });
+  });
+});
+
+app.put("/api/registrar-saida", (req, res) => {
+  const { usuario_id, data, hora_saida } = req.body;
+
+  const updateQuery = `
+    UPDATE registros_ponto
+    SET hora_saida = ?
+    WHERE usuario_id = ? AND data = ?
+  `;
+
+  db.run(updateQuery, [hora_saida, usuario_id, data], function(err) {
+    if (err) {
+      console.error("Erro ao registrar saída:", err.message);
+      return res.status(500).json({ sucesso: false });
+    }
+
+    // Se não atualizou nenhum registro, insere um novo
+    if (this.changes === 0) {
+      const insertQuery = `
+        INSERT INTO registros_ponto (usuario_id, data, hora_saida, atraso)
+        VALUES (?, ?, ?, ?)
+      `;
+
+      db.run(insertQuery, [usuario_id, data, hora_saida, "0"], function(insertErr) {
+        if (insertErr) {
+          console.error("Erro ao inserir saída:", insertErr.message);
+          return res.status(500).json({ sucesso: false });
+        }
+
+        return res.json({ sucesso: true, inserido: true });
+      });
+    } else {
+      return res.json({ sucesso: true, atualizado: true });
+    }
   });
 });
 
@@ -163,28 +203,6 @@ app.put("/api/funcionarios/:id", (req, res) => {
   });
 })
 
-app.put("/api/registrar-saida", (req, res) => {
-  const { usuario_id, data, hora_saida } = req.body;
-
-  const query = `
-    UPDATE registros_ponto
-    SET hora_saida = ?
-    WHERE usuario_id = ? AND data = ?
-  `;
-
-  db.run(query, [hora_saida, usuario_id, data], function(err) {
-    if (err) {
-      console.error("Erro ao registrar saída:", err.message);
-      return res.status(500).json({ sucesso: false });
-    }
-
-    if (this.changes === 0) {
-      return res.status(404).json({ sucesso: false, mensagem: "Registro de entrada não encontrado" });
-    }
-
-    res.json({ sucesso: true });
-  });
-});
 
 
 

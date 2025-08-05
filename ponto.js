@@ -49,36 +49,43 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // Verifica se já registrou entrada ou saída hoje
-  async function verificarBloqueios() {
-    const agora = new Date();
-    const horaAtualStr = agora.toTimeString().split(" ")[0];
+async function verificarBloqueios() {
+  const agora = new Date();
 
-    const res = await fetch(`http://localhost:3000/relatorio/${dadosUsuario.id}`);
-    const json = await res.json();
-    const registrosHoje = json.registros.filter(r => r.data === data);
+  const res = await fetch(`http://localhost:3000/relatorio/${dadosUsuario.id}`);
+  const json = await res.json();
+  const registrosHoje = json.registros.filter(r => r.data === data);
 
-    const entradaRegistrada = registrosHoje.some(r => r.hora_entrada);
-    const saidaRegistrada = registrosHoje.some(r => r.hora_saida);
+  const entradaRegistrada = registrosHoje.some(r => r.hora_entrada);
+  const saidaRegistrada = registrosHoje.some(r => r.hora_saida);
 
-    // Verifica horário de entrada e saída
-    const [eh, em] = dadosUsuario.horario_entrada.split(":").map(Number);
-    const [sh, sm] = dadosUsuario.horario_saida.split(":").map(Number);
+  // Verifica horário de entrada e saída
+  const [eh, em] = dadosUsuario.horario_entrada.split(":").map(Number);
+  const [sh, sm] = dadosUsuario.horario_saida.split(":").map(Number);
 
-    const entradaLiberada = (() => {
-      const target = new Date();
-      target.setHours(eh, em - 30, 0);
-      return agora >= target;
-    })();
+  const entradaLiberada = (() => {
+    const target = new Date();
+    target.setHours(eh, em - 30, 0);
+    return agora >= target;
+  })();
 
-    const saidaLiberada = (() => {
-      const target = new Date();
-      target.setHours(sh, sm, 0);
-      return agora >= target;
-    })();
+  const saidaLiberada = (() => {
+    const target = new Date();
+    target.setHours(sh, sm, 0);
+    return agora >= target;
+  })();
 
-    botaoEntrada.disabled = entradaRegistrada || !entradaLiberada;
-    botaoSaida.disabled = !entradaRegistrada || saidaRegistrada || !saidaLiberada;
+  // 🔧 Aqui é o novo comportamento:
+  if (!entradaRegistrada && entradaLiberada) {
+    verificarHorario(dadosUsuario.horario_entrada);
+  } else if (entradaRegistrada) {
+    aviso.textContent = "✅ Ponto registrado com sucesso!";
+    aviso.className = "fw-bold text-success";
   }
+
+  botaoEntrada.disabled = entradaRegistrada || !entradaLiberada;
+  botaoSaida.disabled = !entradaRegistrada || saidaRegistrada || !saidaLiberada;
+}
 
   // Registrar entrada
   botaoEntrada.addEventListener("click", async () => {
